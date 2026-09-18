@@ -226,6 +226,38 @@ const WEEK12 = CDATA.week12;        // special integrated final week
 const CONTROL_SHEET_ID = "1qd-AUqwp_dCitYa_yOVllBV1OZO2sVhuqVzk24eFJZc";
 const APPS_SCRIPT_URL  = "https://script.google.com/macros/s/AKfycbz7A35cvIa8K28prUzADhuIE7Nw0MpZAH2nswh_7E1nV0_Am8l6WT58yLHfgH90VhXx/exec";
 
+// ============ ATTENDANCE CHECK-IN CONFIG (ชีทคะแนนหลัก 17e-TefPzsG...) ============
+const ATTN_SHEET_ID    = "17e-TefPzsG-inpUdY6d84qGjWkHmI4jdqYmn2UASuoI";
+const ATTN_CONTROL_GID = "1499843054"; // แท็บ "ควบคุมเช็คชื่อ"
+const ATTN_SCRIPT_URL  = "https://script.google.com/macros/s/AKfycbxrBpLb2PtIqx0lVkrLfwoIm11xdNcVNkugl6pfyaskutW0_t_d6NOW6Hvh2uR6BKM/exec";
+
+async function getCurrentCheckinWeek(){
+  try {
+    const url = 'https://docs.google.com/spreadsheets/d/' + ATTN_SHEET_ID + '/gviz/tq?tqx=out:csv&gid=' + ATTN_CONTROL_GID;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const rows = text.trim().split(/\r?\n/).map(r => r.split(',').map(c => c.trim().replace(/^"|"$/g,'').replace(/\r/g,'')));
+    let openWeek = null;
+    rows.slice(1).forEach(row => {
+      const wk = parseInt((row[0]||'').replace(/\r/g,''), 10);
+      const status = (row[1]||'').trim().replace(/\r/g,'');
+      if (status === 'เปิด' && !openWeek) openWeek = wk;
+    });
+    return openWeek;
+  } catch(e){ console.warn('โหลดสถานะเช็คชื่อไม่สำเร็จ', e); return null; }
+}
+
+// ตรวจชื่อ-รหัสกับชีทคะแนนหลัก และบันทึกเข้าเรียน (ถ้ามีสัปดาห์เปิดอยู่) ในคราวเดียว
+async function verifyAndCheckIn(name, studentId){
+  const week = await getCurrentCheckinWeek();
+  const params = new URLSearchParams({ name, studentId });
+  if (week) params.set('week', week);
+  const res = await fetch(ATTN_SCRIPT_URL + '?' + params.toString(), { method:'GET' });
+  const data = await res.json();
+  return { data, week };
+}
+
 // WEEK_ACCESS keys: w1..w12 (Google Sheet controls "สัปดาห์ที่ 1-12").
 // The midterm checkpoint (inserted after week 7) follows w7's open/close status,
 // since it is not one of the 12 numbered weeks in the control sheet.
@@ -656,16 +688,41 @@ function startTimer(){
 }
 
 // ============ GATE / BOOT ============
-function boot(){
+async function boot(){
   const name = document.getElementById('gName').value.trim();
   const sid = document.getElementById('gId').value.trim();
   const err = document.getElementById('gErr');
-  if (!name || !sid){ err.textContent = 'กรุณากรอกชื่อ-สกุล และรหัสนักศึกษาให้ครบถ้วน'; return; }
+  const btn = document.getElementById('gStart');
+  if (!name || !sid){ err.textContent = 'กรุณากรอกชื่อ-สกุล และรหัสนักศึกษาให้ครบถ้วน'; err.style.color=''; return; }
+
+  err.style.color = '#555';
+  err.textContent = 'กำลังตรวจสอบข้อมูล...';
+  btn.disabled = true;
+
+  let result;
+  try {
+    result = await verifyAndCheckIn(name, sid);
+  } catch(e){
+    err.style.color = '#b3261e';
+    err.textContent = 'เชื่อมต่อระบบไม่สำเร็จ กรุณาลองใหม่ หรือแจ้งอาจารย์';
+    btn.disabled = false;
+    return;
+  }
+
+  if (result.data.status !== 'success'){
+    err.style.color = '#b3261e';
+    err.textContent = result.data.message || 'ไม่พบข้อมูลนักศึกษา กรุณาตรวจสอบชื่อ-สกุลหรือรหัสนักศึกษาให้ถูกต้อง';
+    btn.disabled = false;
+    return;
+  }
+
+  err.style.color = '';
   err.textContent = '';
-  LEARNER_NAME = name; LEARNER_ID = sid;
+  const displayName = result.data.name || name;
+  LEARNER_NAME = displayName; LEARNER_ID = sid;
   document.getElementById('gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  document.getElementById('tbName').textContent = name + ' (' + sid + ')';
+  document.getElementById('tbName').textContent = displayName + ' (' + sid + ')';
 
   const main = document.getElementById('mainContent');
   let html = '';
