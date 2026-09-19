@@ -32,6 +32,15 @@ button{font-family:inherit;cursor:pointer}
 .gate-btn:hover{background:var(--navy2)}
 .gate-err{color:var(--bad);font-size:13px;margin-top:10px;min-height:18px}
 .gate-meta{margin-top:20px;padding-top:16px;border-top:1px dashed var(--line);font-size:12.5px;color:var(--sub)}
+.gate-confirm{display:none;text-align:center}
+.gate-confirm .confirm-check{width:64px;height:64px;border-radius:50%;background:#e6f5ee;color:var(--ok,#1e8e5a);
+  display:flex;align-items:center;justify-content:center;font-size:34px;margin:0 auto 16px}
+.gate-confirm.is-dup .confirm-check{background:#eef2f7;color:var(--navy)}
+.gate-confirm.is-closed .confirm-check{background:#f4f0e2;color:#8a6d00}
+.gate-confirm h2{font-size:19px;color:var(--navy);margin-bottom:6px}
+.gate-confirm .confirm-week{font-size:15px;font-weight:700;color:var(--navy2);margin-bottom:4px}
+.gate-confirm .confirm-name{font-size:13.5px;color:var(--sub);margin-bottom:18px}
+.gate-confirm .gate-btn{margin-top:6px}
 
 /* ---------- APP SHELL ---------- */
 #app{display:none}
@@ -175,7 +184,7 @@ textarea.reflect-input{width:100%;min-height:90px;padding:12px;border-radius:10p
 <body>
 
 <div id="gate">
-  <div class="gate-card">
+  <div class="gate-card" id="gateForm">
     <span class="gate-badge">BPH008</span>
     <h1>การสื่อสารและให้คำปรึกษาทางสุขภาพ</h1>
     <p class="sub">Health Communication and Health Counseling<br>นักศึกษาสาธารณสุขชุมชน ภาคสมทบ บล็อก 2</p>
@@ -190,6 +199,13 @@ textarea.reflect-input{width:100%;min-height:90px;padding:12px;border-radius:10p
       สาขาสาธารณสุขชุมชน คณะสหเวชศาสตร์ วิทยาลัยนครราชสีมา<br>
       ระยะเวลา: 12 สัปดาห์
     </div>
+  </div>
+  <div class="gate-card gate-confirm" id="gateConfirm">
+    <div class="confirm-check" id="confirmIcon">✓</div>
+    <h2 id="confirmTitle">เช็คชื่อเข้าเรียนสำเร็จ</h2>
+    <div class="confirm-week" id="confirmWeekText"></div>
+    <div class="confirm-name" id="confirmNameText"></div>
+    <button class="gate-btn" id="gContinue">เข้าสู่บทเรียน →</button>
   </div>
 </div>
 
@@ -229,7 +245,7 @@ const APPS_SCRIPT_URL  = "https://script.google.com/macros/s/AKfycbz7A35cvIa8K28
 // ============ ATTENDANCE CHECK-IN CONFIG (ชีทคะแนนหลัก 17e-TefPzsG...) ============
 const ATTN_SHEET_ID    = "17e-TefPzsG-inpUdY6d84qGjWkHmI4jdqYmn2UASuoI";
 const ATTN_CONTROL_GID = "1499843054"; // แท็บ "ควบคุมเช็คชื่อ"
-const ATTN_SCRIPT_URL  = "https://script.google.com/macros/s/AKfycbxrBpLb2PtIqx0lVkrLfwoIm11xdNcVNkugl6pfyaskutW0_t_d6NOW6Hvh2uR6BKM/exec";
+const ATTN_SCRIPT_URL  = "https://script.google.com/macros/s/AKfycbzMkPhhzhRnn80ZVq0Rcbqg0HszcxGuHwayOxTX7lShcwGq2otEaVWIAP9yIfzTSti_Rw/exec";
 
 async function getCurrentCheckinWeek(){
   try {
@@ -719,6 +735,40 @@ async function boot(){
   err.style.color = '';
   err.textContent = '';
   const displayName = result.data.name || name;
+
+  // แสดงหน้ายืนยันการเช็คชื่อ ก่อนเข้าสู่บทเรียน
+  const confirmBox = document.getElementById('gateConfirm');
+  const icon = document.getElementById('confirmIcon');
+  const title = document.getElementById('confirmTitle');
+  const weekText = document.getElementById('confirmWeekText');
+  const nameText = document.getElementById('confirmNameText');
+  confirmBox.classList.remove('is-dup','is-closed');
+
+  if (!result.week){
+    confirmBox.classList.add('is-closed');
+    icon.textContent = '🔒';
+    title.textContent = 'ยืนยันตัวตนสำเร็จ';
+    weekText.textContent = 'ขณะนี้ยังไม่เปิดให้เช็คชื่อเข้าเรียน';
+  } else if (result.data.duplicate){
+    confirmBox.classList.add('is-dup');
+    icon.textContent = '✓';
+    title.textContent = 'เช็คชื่อไปแล้ว';
+    weekText.textContent = 'สัปดาห์ที่ ' + result.week;
+  } else {
+    icon.textContent = '✓';
+    title.textContent = 'เช็คชื่อเข้าเรียนสำเร็จ';
+    weekText.textContent = 'สัปดาห์ที่ ' + result.week;
+  }
+  nameText.textContent = displayName + ' (' + sid + ')';
+
+  document.getElementById('gateForm').style.display = 'none';
+  confirmBox.style.display = 'block';
+
+  document.getElementById('gContinue').onclick = () => enterApp(displayName, sid);
+  btn.disabled = false;
+}
+
+function enterApp(displayName, sid){
   LEARNER_NAME = displayName; LEARNER_ID = sid;
   document.getElementById('gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
